@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
+// --- INTERFACES ---
+
 export interface Merchant {
   id: string
   merchant_id: string
@@ -51,11 +53,25 @@ export interface Order {
   product_id: string
   quantity: number
   status: 'pending' | 'delivered'
+  client_email?: string // Ajouté pour les notifications mail
   created_at: string
   updated_at: string
 }
 
+export interface Notification {
+  id: string
+  client_id: string
+  title: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
+
+// --- CLASSE CLIENT ---
+
 export class SupabaseClient {
+  
+  // 1. AUTHENTIFICATION
   async loginMerchant(merchantId: string, password: string): Promise<Merchant | null> {
     const { data, error } = await supabase
       .from('merchants')
@@ -94,6 +110,7 @@ export class SupabaseClient {
     }
   }
 
+  // 2. RÉCUPÉRATION DE DONNÉES (LISTES)
   async getProducts(merchantId: string): Promise<Product[]> {
     const { data, error } = await supabase
       .from('products')
@@ -101,10 +118,7 @@ export class SupabaseClient {
       .eq('merchant_id', merchantId)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Get products error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   }
 
@@ -115,10 +129,7 @@ export class SupabaseClient {
       .eq('merchant_id', merchantId)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Get clients error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   }
 
@@ -129,192 +140,92 @@ export class SupabaseClient {
       .eq('merchant_id', merchantId)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Get orders error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   }
 
-  // AJOUTEZ CES FONCTIONS POUR QUE "VOIR" FONCTIONNE :
-
+  // 3. RÉCUPÉRATION PAR ID
   async getProductById(id: string): Promise<Product | null> {
-    try {
-      console.log('Recherche produit ID:', id)
-      
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', id)
-        .single()
-
-      if (error) {
-        console.error('Erreur getProductById:', error)
-        return null
-      }
-      
-      console.log('Produit trouvé:', data)
-      return data
-    } catch (error) {
-      console.error('Exception getProductById:', error)
-      return null
-    }
+    const { data, error } = await supabase.from('products').select('*').eq('id', id).single()
+    if (error) return null
+    return data
   }
 
   async getClientById(id: string): Promise<Client | null> {
-    try {
-      console.log('Recherche client ID:', id)
-      
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', id)
-        .single()
+    const { data, error } = await supabase.from('clients').select('*').eq('id', id).single()
+    if (error) return null
+    return data
+  }
 
-      if (error) {
-        console.error('Erreur getClientById:', error)
-        return null
-      }
-      
-      console.log('Client trouvé:', data)
-      return data
+  // 4. GESTION DES NOTIFICATIONS
+  async getNotifications(clientId: string): Promise<Notification[]> {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
     } catch (error) {
-      console.error('Exception getClientById:', error)
-      return null
+      console.error('Get notifications error:', error)
+      return []
     }
   }
 
-  // AJOUTEZ AUSSI CES FONCTIONS POUR LES AUTRES OPÉRATIONS :
+  async markNotificationAsRead(id: string): Promise<boolean> {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+    return !error
+  }
 
+  // 5. CRUD OPÉRATIONS (INSERT / UPDATE / DELETE)
   async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<Product | null> {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .insert([{
-          ...product,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Create product error:', error)
-        return null
-      }
-      return data
-    } catch (error) {
-      console.error('Create product exception:', error)
-      return null
-    }
+    const { data, error } = await supabase
+      .from('products')
+      .insert([{ ...product, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+      .select().single()
+    return error ? null : data
   }
 
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product | null> {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Update product error:', error)
-        return null
-      }
-      return data
-    } catch (error) {
-      console.error('Update product exception:', error)
-      return null
-    }
+    const { data, error } = await supabase
+      .from('products')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id).select().single()
+    return error ? null : data
   }
 
   async deleteProduct(id: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        console.error('Delete product error:', error)
-        return false
-      }
-      return true
-    } catch (error) {
-      console.error('Delete product exception:', error)
-      return false
-    }
+    const { error } = await supabase.from('products').delete().eq('id', id)
+    return !error
   }
 
   async createClient(client: Omit<Client, 'id' | 'created_at' | 'updated_at'>): Promise<Client | null> {
-    try {
-      const { data, error } = await supabase
-        .from('clients')
-        .insert([{
-          ...client,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Create client error:', error)
-        return null
-      }
-      return data
-    } catch (error) {
-      console.error('Create client exception:', error)
-      return null
-    }
+    const { data, error } = await supabase
+      .from('clients')
+      .insert([{ ...client, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+      .select().single()
+    return error ? null : data
   }
 
   async updateClient(id: string, updates: Partial<Client>): Promise<Client | null> {
-    try {
-      const { data, error } = await supabase
-        .from('clients')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Update client error:', error)
-        return null
-      }
-      return data
-    } catch (error) {
-      console.error('Update client exception:', error)
-      return null
-    }
+    const { data, error } = await supabase
+      .from('clients')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id).select().single()
+    return error ? null : data
   }
 
   async deleteClient(id: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        console.error('Delete client error:', error)
-        return false
-      }
-      return true
-    } catch (error) {
-      console.error('Delete client exception:', error)
-      return false
-    }
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    return !error
   }
 
-  async createOrder(order: Omit<Order, 'id' | 'created_at' | 'updated_at'>): Promise<Order | null> {
+  async createOrder(order: any): Promise<Order | null> {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -327,7 +238,7 @@ export class SupabaseClient {
         .single()
 
       if (error) {
-        console.error('Create order error:', error)
+        console.error('Create order error details:', error.message)
         return null
       }
       return data
@@ -338,26 +249,11 @@ export class SupabaseClient {
   }
 
   async createMerchant(merchant: Omit<Merchant, 'id' | 'created_at' | 'updated_at'>): Promise<Merchant | null> {
-    try {
-      const { data, error } = await supabase
-        .from('merchants')
-        .insert([{
-          ...merchant,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Create merchant error:', error)
-        return null
-      }
-      return data
-    } catch (error) {
-      console.error('Create merchant exception:', error)
-      return null
-    }
+    const { data, error } = await supabase
+      .from('merchants')
+      .insert([{ ...merchant, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+      .select().single()
+    return error ? null : data
   }
 }
 
